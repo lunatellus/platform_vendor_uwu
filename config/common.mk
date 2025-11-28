@@ -37,6 +37,10 @@ PRODUCT_PACKAGES += \
     uwuPrism \
     ThemePicker
 
+# Lineage interfaces
+PRODUCT_PACKAGES += \
+    framework_compatibility_matrix.lineage.xml
+
 # Platform UI sounds not provided by Pixel Sounds
 PRODUCT_COPY_FILES += \
     frameworks/base/data/sounds/effects/ogg/KeypressInvalid.ogg:$(TARGET_COPY_OUT_PRODUCT)/media/audio/ui/KeypressInvalid.ogg \
