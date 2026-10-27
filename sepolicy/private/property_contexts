@@ -1,0 +1,8 @@
+# uwuAOSP version
+ro.uwu.release                         u:object_r:build_prop:s0 exact string
+ro.uwu.version                         u:object_r:build_prop:s0 exact string
+ro.uwu.display.version                 u:object_r:build_prop:s0 exact string
+ro.uwu.build.version                   u:object_r:build_prop:s0 exact string
+ro.uwu.releasetype                     u:object_r:build_prop:s0 exact string
+ro.uwu.device                          u:object_r:build_prop:s0 exact string
+ro.uwu.maintainer                      u:object_r:build_prop:s0 exact string
