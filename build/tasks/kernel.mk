@@ -781,11 +781,14 @@ endif # FULL_KERNEL_BUILD
 
 ifneq ($(TARGET_KERNEL_PLATFORM_TARGET),)
 KERNEL_PATH := $(abspath $(BUILD_TOP)/kernel/platform/kernel-$(TARGET_KERNEL_VERSION))
+# Keep Bazel state outside the dist directory, which Kleaf may clean.
+KERNEL_BAZEL_OUT := $(TARGET_OUT_INTERMEDIATES)/KERNEL_BAZEL_OUT
+
 $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST)
 	@echo "Building $(BOARD_KERNEL_IMAGE_NAME)"
-	@mkdir -p $(KERNEL_OUT)
-	$(hide) cd $(KERNEL_PATH) && python3 $(BUILD_TOP)/.repo/repo/repo manifest -o - -r |sed '/^  <project.*\/>$$/{/kernel\/platform\/kernel-$(TARGET_KERNEL_VERSION)/!d;}' |sed '/^  <project/,/  <\/project>/{/kernel\/platform\/kernel-$(TARGET_KERNEL_VERSION)/!d;}' |sed 's|kernel/platform/kernel-$(TARGET_KERNEL_VERSION)/||' > $(abspath $(KERNEL_OUT))/manifest.xml
-	$(hide) cd $(KERNEL_PATH) && ./tools/bazel --output_user_root=$(abspath $(KERNEL_OUT)/bazel-out) --output_root=$(abspath $(KERNEL_OUT)/bazel-out) run --experimental_convenience_symlinks=ignore --cpu=$(KERNEL_ARCH) --repo_manifest $(abspath $(KERNEL_PATH)):$(abspath $(KERNEL_OUT)/manifest.xml) --config=stamp //$(KERNEL_SRC):$(TARGET_KERNEL_PLATFORM_TARGET)_dist -- --destdir=$(abspath $(KERNEL_OUT))
+	@mkdir -p $(KERNEL_OUT) $(KERNEL_BAZEL_OUT)
+	$(hide) awk -v prefix="kernel/platform/kernel-$(TARGET_KERNEL_VERSION)/" 'BEGIN { print "<manifest>" } index($$0, prefix) == 1 { printf "  <project path=\"%s\" />\n", substr($$0, length(prefix) + 1) } END { print "</manifest>" }' $(BUILD_TOP)/.repo/project.list > $(abspath $(KERNEL_OUT))/manifest.xml
+	$(hide) cd $(KERNEL_PATH) && ./tools/bazel --output_user_root=$(abspath $(KERNEL_BAZEL_OUT)) --output_root=$(abspath $(KERNEL_BAZEL_OUT)) run --experimental_convenience_symlinks=ignore --cpu=$(KERNEL_ARCH) --repo_manifest $(abspath $(KERNEL_PATH)):$(abspath $(KERNEL_OUT)/manifest.xml) --config=stamp $(KERNEL_BAZEL_FLAGS) //$(KERNEL_SRC):$(TARGET_KERNEL_PLATFORM_TARGET)_dist -- --destdir=$(abspath $(KERNEL_OUT))
 	$(if $(BOOT_KERNEL_MODULES),\
 		$(call build-image-kernel-modules-lineage,$(addprefix $(KERNEL_OUT)/,$(BOOT_KERNEL_MODULES)),$(KERNEL_VENDOR_RAMDISK_MODULES_OUT),,$(KERNEL_VENDOR_RAMDISK_DEPMOD_STAGING_DIR),$(KERNEL_VENDOR_RAMDISK_KERNEL_MODULES_LOAD),,,)\
 	)
@@ -794,7 +797,7 @@ $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $
 	)
 	$(if $(filter $(TARGET_KERNEL_MIXED_MODE),true),\
 		system_dlkm_modules=$$(awk -F'/' '{ print "$(KERNEL_OUT)/"$$NF }' $(KERNEL_OUT)/system_dlkm.modules.load); \
-		($(call build-image-kernel-modules-lineage,$$system_dlkm_modules,$(SYSTEM_KERNEL_MODULES_OUT),$(SYSTEM_KERNEL_MODULE_MOUNTPOINT)/,$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR),,,$(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST),))\
+		($(call build-image-kernel-modules-lineage,$$system_dlkm_modules,$(SYSTEM_KERNEL_MODULES_OUT),$(SYSTEM_KERNEL_MODULE_MOUNTPOINT)/,$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR),$$system_dlkm_modules,,$(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST),))\
 	)
 	vendor_modules=$$(comm -23 <(find $(KERNEL_OUT) -maxdepth 1 -type f -name '*.ko' | awk -F'/' '{ print $$NF }' | sort) <(awk -F'/' '{ print $$NF }' $(KERNEL_OUT)/system_dlkm.modules.load | sort) | sed 's|^|$(KERNEL_OUT)/|'); \
 	($(call build-image-kernel-modules-lineage,$$vendor_modules,$(KERNEL_MODULES_OUT),$(KERNEL_MODULE_MOUNTPOINT)/,$(KERNEL_DEPMOD_STAGING_DIR),$(BOARD_VENDOR_KERNEL_MODULES_LOAD),,$(KERNEL_MODULES_PARTITION_FILE_LIST),$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR)/lib/modules/0.0/$(SYSTEM_KERNEL_MODULE_MOUNTPOINT)))
@@ -803,14 +806,23 @@ $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $
 ifeq ($(BOARD_INCLUDE_DTB_IN_BOOTIMG),true)
 $(INSTALLED_DTBIMAGE_TARGET): $(TARGET_PREBUILT_INT_KERNEL)
 	@rm -f $@
-	$(foreach dtb,$(TARGET_DTB_LIST_WILDCARD),\
-		cat `find $(abspath $(KERNEL_OUT))/$(dir $(dtb)) -maxdepth 1 -type f -name "$(notdir $(dtb)).dtb" | sort` >> $@;)
+	$(hide) if [ -f $(KERNEL_OUT)/dtb.img ]; then \
+		cp $(KERNEL_OUT)/dtb.img $@; \
+	else \
+		$(foreach dtb,$(TARGET_DTB_LIST_WILDCARD),\
+			cat `find $(abspath $(KERNEL_OUT))/$(dir $(dtb)) -maxdepth 1 -type f -name "$(notdir $(dtb)).dtb" | sort` >> $@;) \
+	fi
 endif
 
 ifeq ($(BOARD_KERNEL_SEPARATED_DTBO),true)
 MKDTBOIMG := $(HOST_OUT_EXECUTABLES)/mkdtboimg$(HOST_EXECUTABLE_SUFFIX)
 $(BOARD_PREBUILT_DTBOIMAGE): $(TARGET_PREBUILT_INT_KERNEL) $(MKDTBOIMG)
-	$(MKDTBOIMG) create $@ --page_size=$(BOARD_KERNEL_PAGESIZE) $(shell find $(abspath $(KERNEL_OUT))/$(dir $(TARGET_DTBO_LIST_WILDCARD)) -maxdepth 1 -type f -name "$(notdir $(TARGET_DTBO_LIST_WILDCARD)).dtbo" | sort)
+	$(hide) if [ -f $(KERNEL_OUT)/dtbo.img ]; then \
+		mkdir -p $(dir $@); \
+		cp $(KERNEL_OUT)/dtbo.img $@; \
+	else \
+		$(MKDTBOIMG) create $@ --page_size=$(BOARD_KERNEL_PAGESIZE) $$(find $(abspath $(KERNEL_OUT))/$(dir $(TARGET_DTBO_LIST_WILDCARD)) -maxdepth 1 -type f -name "$(notdir $(TARGET_DTBO_LIST_WILDCARD)).dtbo" | sort); \
+	fi
 endif
 endif
 

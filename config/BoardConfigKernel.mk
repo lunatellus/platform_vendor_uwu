@@ -44,6 +44,9 @@
 #   TARGET_KERNEL_EXT_MODULES          = Optional, the external modules we are
 #                                          building. Defaults to empty
 #
+#   TARGET_KERNEL_BAZEL_FLAGS          = Optional, additional Kleaf Bazel flags (e.g. --jobs=8 --make_jobs=8)
+#   TARGET_KERNEL_UNSAFE_DDK_HEADERS   = Optional, allow unsafe DDK headers when true
+#
 #   USE_CCACHE                         = Enable ccache (global Android flag)
 #   USE_RBE                            = Enable RBE (global Android flag)
 
@@ -130,8 +133,13 @@ else
     KERNEL_CC_WRAPPER := $(CCACHE_BIN)
 endif
 
-# Clear this first to prevent accidental poisoning from env
+# Clear these first to prevent accidental poisoning from env
+KERNEL_BAZEL_FLAGS := $(TARGET_KERNEL_BAZEL_FLAGS)
 KERNEL_MAKE_FLAGS :=
+
+ifeq ($(TARGET_KERNEL_UNSAFE_DDK_HEADERS),true)
+    KERNEL_BAZEL_FLAGS += --//build/kernel/kleaf:allow_ddk_unsafe_headers
+endif
 
 # A standalone kernel build keeps all CPUs. Orchestrators may lower only the
 # nested make width so it can overlap the Android Ninja without doubling the
