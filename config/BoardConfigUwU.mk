@@ -4,9 +4,6 @@
 # Recovery
 BOARD_USES_FULL_RECOVERY_IMAGE ?= true
 
-# Framework compatibility matrix
-DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE += vendor/uwu/config/framework_compatibility_matrix.xml
-
 # uwuAOSP system_ext policy
 SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += vendor/uwu/sepolicy/private
 
