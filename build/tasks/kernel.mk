@@ -784,7 +784,11 @@ KERNEL_PATH := $(abspath $(BUILD_TOP)/kernel/platform/kernel-$(TARGET_KERNEL_VER
 # Keep Bazel state outside the dist directory, which Kleaf may clean.
 KERNEL_BAZEL_OUT := $(TARGET_OUT_INTERMEDIATES)/KERNEL_BAZEL_OUT
 
-$(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST)
+KERNEL_BAZEL_DEPS := $(sort $(shell find $(KERNEL_PATH) \
+    -name .git -prune -print -o \
+    -path $(KERNEL_PATH)/out -prune -o -not -type l -not -path '* *' -print))
+
+$(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_BAZEL_DEPS) $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST)
 	@echo "Building $(BOARD_KERNEL_IMAGE_NAME)"
 	@mkdir -p $(KERNEL_OUT) $(KERNEL_BAZEL_OUT)
 	$(hide) awk -v prefix="kernel/platform/kernel-$(TARGET_KERNEL_VERSION)/" 'BEGIN { print "<manifest>" } index($$0, prefix) == 1 { printf "  <project path=\"%s\" />\n", substr($$0, length(prefix) + 1) } END { print "</manifest>" }' $(BUILD_TOP)/.repo/project.list > $(abspath $(KERNEL_OUT))/manifest.xml
@@ -802,6 +806,7 @@ $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $
 	vendor_modules=$$(comm -23 <(find $(KERNEL_OUT) -maxdepth 1 -type f -name '*.ko' | awk -F'/' '{ print $$NF }' | sort) <(awk -F'/' '{ print $$NF }' $(KERNEL_OUT)/system_dlkm.modules.load | sort) | sed 's|^|$(KERNEL_OUT)/|'); \
 	($(call build-image-kernel-modules-lineage,$$vendor_modules,$(KERNEL_MODULES_OUT),$(KERNEL_MODULE_MOUNTPOINT)/,$(KERNEL_DEPMOD_STAGING_DIR),$(BOARD_VENDOR_KERNEL_MODULES_LOAD),,$(KERNEL_MODULES_PARTITION_FILE_LIST),$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR)/lib/modules/0.0/$(SYSTEM_KERNEL_MODULE_MOUNTPOINT)))
 	$(if $(BOOT_KERNEL_MODULES)$(BOOT_KERNEL_MODULES_FINDER),mkdir -p $(dir $(KERNEL_VENDOR_RAMDISK_MODULES_STAMP)) && touch $(KERNEL_VENDOR_RAMDISK_MODULES_STAMP))
+	$(hide) touch -c $@
 
 ifeq ($(BOARD_INCLUDE_DTB_IN_BOOTIMG),true)
 $(INSTALLED_DTBIMAGE_TARGET): $(TARGET_PREBUILT_INT_KERNEL)
